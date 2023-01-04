@@ -9,11 +9,22 @@
             <div class="card-header py-3 d-flex flex-row align-items-center justify-content-between">
                 <label class="m-0 font-weight-bold text-primary">Create invoice</label>
             </div>
+            
             <!-- Card Body -->
             <div class="card-body">
+                
                 <form method="post" action="">
                     {% csrf_token %}
-                    
+                    {% if messages %}
+                    <ul class="messages">
+                        {% for message in messages %}
+                        <li style="color:#FF0000">
+                            {% if message.level == DEFAULT_MESSAGE_LEVELS.ERROR %}Important: {% endif %}
+                            {{ message }}
+                        </li>
+                        {% endfor %}
+                    </ul>
+                    {% endif %}
                     <div class="mb-3">
                         <label class="form-label" for="invoice_customer">Customer name</label>
                         {{form.customer}}
@@ -60,6 +71,7 @@
                             name="create-invoice">
                     </div>
                 </form>
+                
             </div>
         </div>
     </div>

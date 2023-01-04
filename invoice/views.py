@@ -1,6 +1,7 @@
 from django.http import HttpResponse
 from django.shortcuts import render, redirect
 
+from django.contrib import messages
 from utils.filehandler import handle_file_upload
 
 from .forms import *
@@ -91,9 +92,8 @@ def upload_product_from_excel(request):
     # save product to database
     # redirect to view_product
     excelForm = excelUploadForm(request.POST or None, request.FILES or None)
-    print("Reached HERE!")
+
     if request.method == "POST":
-        print("Reached HERE2222!")
 
         handle_file_upload(request.FILES["excel_file"])
         excel_file = "static/excel/masterfile.xlsx"
@@ -105,7 +105,7 @@ def upload_product_from_excel(request):
                 product_price=row["product_price"],
                 product_unit=row["product_unit"],
             )
-            print(product)
+
             product.save()
         return redirect("view_product")
     return render(request, "invoice/upload_products.html", {"excelForm": excelForm})
@@ -211,38 +211,48 @@ def create_invoice(request):
         form = InvoiceForm(request.POST)
         formset = InvoiceDetailFormSet(request.POST)
         if form.is_valid():
-            invoice = Invoice.objects.create(
-                customer=form.cleaned_data.get("customer"),
-                contact=form.cleaned_data.get("contact"),
-                email=form.cleaned_data.get("email"),
-                date=form.cleaned_data.get("date"),
-                discount=form.cleaned_data.get("discount"),
-            )
-        if formset.is_valid():
-            total = 0
-            for form in formset:
-                product = form.cleaned_data.get("product")
-                amount = form.cleaned_data.get("amount")
-                if product and amount:
-                    # Sum each row
-                    sum1 = float(product.product_price) * float(amount)
-                    # Sum of total invoice
-                    total += sum1
-                    InvoiceDetail(
-                        invoice=invoice, product=product, amount=amount
-                    ).save()
-            # Pointing the customer
-            # points = 0
-            # if total > 1000:
-            #     points += total / 1000
-            # invoice.customer.customer_points = round(points)
-            # # Save the points to Customer table
-            # invoice.customer.save()
+            if formset.is_valid():
+                invoice = Invoice.objects.create(
+                    customer=form.cleaned_data.get("customer"),
+                    contact=form.cleaned_data.get("contact"),
+                    email=form.cleaned_data.get("email"),
+                    date=form.cleaned_data.get("date"),
+                    discount=form.cleaned_data.get("discount"),
+                )
+                total = 0
+                for form in formset:
+                    product = form.cleaned_data.get("product")
+                    amount = form.cleaned_data.get("amount")
+                    if product and amount:
+                        # Sum each row
+                        sum1 = float(product.product_price) * float(amount)
+                        # Sum of total invoice
+                        total += sum1
+                        invoice_detail = InvoiceDetail(
+                            invoice=invoice, product=product, amount=amount
+                        )
+                    # subtract the quantity of product
+                    if product.product_unit >= amount:
+                        product.product_unit -= amount
+                        product.save()
+                        invoice_detail.save()
+                    else:
+                        messages.error(
+                            request, "Some items Available in Stock")
+                        return redirect("create_invoice")
 
-            # Save the invoice
-            invoice.total = total*(1-float(invoice.discount)/100)
-            invoice.save()
-            return redirect("view_invoice")
+                # Pointing the customer
+                # points = 0
+                # if total > 1000:
+                #     points += total / 1000
+                # invoice.customer.customer_points = round(points)
+                # # Save the points to Customer table
+                # invoice.customer.save()
+
+                # Save the invoice
+                invoice.total = total*(1-float(invoice.discount)/100)
+                invoice.save()
+                return redirect("view_invoice")
 
     context = {
         "total_product": total_product,
@@ -306,7 +316,12 @@ def delete_invoice(request, pk):
 
     invoice = Invoice.objects.get(id=pk)
     invoice_detail = InvoiceDetail.objects.filter(invoice=invoice)
+
     if request.method == "POST":
+        for current_invoice in invoice_detail.iterator():
+
+            current_invoice.product.product_unit += current_invoice.amount
+            current_invoice.product.save()
         invoice_detail.delete()
         invoice.delete()
         return redirect("view_invoice")
